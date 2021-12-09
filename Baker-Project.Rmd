@@ -1,0 +1,318 @@
+---
+title: "Data 606 Final Project"
+author: "Tyler Baker"
+date: "12/8/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(jsonlite)
+library(httr)
+library(tidyverse)
+library(dplyr)
+```
+
+# Alcohol Consumption and Infant Mortality Rates
+
+## Abstract
+
+The purpose of this observational study was to discover if there is a relationship between alcohol consumption and infant mortality rates. Furthermore, if there is a relationship, how does wealth effect it? The more I looked the less likely a relationship seems to exist. In fact, in some instances, a negative correlation might exist. 
+
+## Introduction
+
+Research Question: 
+Does a countries wealth class change the impact alcohol consumption has on infant mortality rates?
+
+Alcohol is probably most abused drug in the world. Every years we get contradicting reports on whether alcohol is beneficial or harmful to your health. The point of this study is to see how alcohol consumption effects child birth. Obviously, drinking while pregnant is dangerous, but what about before a person is pregnant? Does the father's alcohol consumption play a role? Does the society's alcohol consumption play a role?
+
+## Gathering the Data
+
+The data came from the World Health Organization and the World Bank. Both websites offer a tool that allows you to filter a giant dataset into the data you want and have it exported in the form of a csv or Excel sheet.
+
+The observations in this case are countries.
+The explanatory variable is the amount of liters of pure alcohol consumed by a country. The response variable is the amount of infant deaths for every 1000 births.
+
+The links are provided in the comments of each link in my GitHub.
+```{r gathering the data}
+#Alcohol consumption
+alc_link <- "https://raw.githubusercontent.com/tylerbaker01/Data-606-Final-Project/main/Alcohol%20Consumption.csv"
+#Infant mortality rate
+infant_link <- "https://raw.githubusercontent.com/tylerbaker01/Data-606-Final-Project/main/infant%20mortality%20rates%20per%20country.csv"
+#GDP
+## Data from The World Bank
+gdp_link <- "https://raw.githubusercontent.com/tylerbaker01/Data-606-Final-Project/main/GDP%20per%20capita%20by%20country.csv"
+alc_df <- read.csv(alc_link)
+infant_df <- read.csv(infant_link)
+gdp_df <- read.csv(gdp_link)
+```
+
+# Tidy Data
+## Infant Mortality Rate
+```{r infant mortality rate}
+# I only want data from the last 25 years.
+infant_df <- infant_df[-c(2:38)]
+# Blank variable
+infant_df <- infant_df[-c(28)]
+# Name Columns
+colnames(infant_df) <- c("country", "1994", "1995", "1996", "1997", "1998", "1999", "2000", "2001", "2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019")
+# Remove unwanted rows
+infant_df <- infant_df[-c(1:5), ]
+# Remove NAs
+infant_df <- na.omit(infant_df)
+# Pivot longer
+infant_df <- infant_df %>%
+  pivot_longer(!country, names_to = "year", values_to = "deaths per 1000 births")
+```
+## GDP per Capita
+```{r}
+# Keep last 25 years
+gdp_df <- gdp_df[-c(2:39)]
+# Name Columns
+colnames(gdp_df) <- c("country", "1995", "1996", "1997", "1998", "1999", "2000", "2001", "2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019")
+# Remove unwanted rows
+gdp_df <- gdp_df[-c(1:5), ]
+# Remove unwanted column
+gdp_df <- gdp_df[-c(27)]
+# Remove NAs
+gdp_df <- na.omit(gdp_df)
+# Pivot longer
+gdp_df <- gdp_df %>%
+  pivot_longer(!country, names_to = "year", values_to = "GDP per Capita")
+```
+## Alcohol Cosumption
+```{r}
+# Keep only needed variables
+alc_df <- alc_df[c("Location", "Period", "Dim1", "Value")]
+# Rename variables
+colnames(alc_df) <- c("country", "year", "sex", "liters of pure alcohol")
+# Sort by countries
+alc_df <- alc_df %>%
+  arrange(country)
+# Only keep both sex's data
+alc_df <- subset(alc_df,  sex == "Both sexes")
+# Remove column
+alc_df <- alc_df[c("country", "year", "liters of pure alcohol")]
+# Convert data type
+alc_df$year <- as.character(alc_df$year)
+# Convert data type
+alc_df$`liters of pure alcohol` <- gsub("\\[.*","", as.character(alc_df$`liters of pure alcohol`))
+alc_df$`liters of pure alcohol` <- as.numeric(alc_df$`liters of pure alcohol`)
+```
+## Combining the Data
+I want only the countries in which all three data frames have in common.
+```{r}
+combination <- inner_join(gdp_df, infant_df)
+country_stats <- inner_join(combination, alc_df)
+
+```
+# Analysis
+## Splitting the countries into groups based on GDP per capita
+```{r finding the quartiles}
+country_stats_2019 <- country_stats %>%
+  filter(year == "2019")
+gdp_quantiles <- quantile(country_stats_2019$`GDP per Capita`)
+country_stats_2019 <- country_stats_2019 %>%
+  mutate(`wealth class` = 
+           case_when(
+             `GDP per Capita` < 2401.7629 ~ "lower", `GDP per Capita` < 6724.3071 ~ "low-mid", `GDP per Capita` < 17544.3487 ~ "upper-mid", `GDP per Capita` >= 17544.3487 ~ "upper"
+           )
+  )
+```
+
+## Lower class countries
+How does alcohol consumption effect infant mortality rate in lower class countries?
+```{r}
+lower_class_countries <- country_stats_2019 %>%
+  filter(`wealth class` == "lower")
+```
+## Lower Middle Class Countries
+```{r}
+low_mid_countries <- country_stats_2019 %>%
+  filter(`wealth class` == "low-mid")
+```
+## Upper Middle Class Countries
+```{r}
+upper_mid_countries <- country_stats_2019 %>%
+  filter(`wealth class` == "upper-mid")
+```
+## Upper Class Countries
+```{r}
+upper_class_countries <- country_stats_2019 %>%
+  filter(`wealth class` == "upper")
+```
+
+## Summary Statistics (for 2019)
+### means
+```{r}
+countries_alc_mean <- mean(country_stats_2019$`liters of pure alcohol`)
+gdp_mean <- mean(country_stats_2019$`GDP per Capita`)
+infant_mortality_mean <- mean(country_stats_2019$`deaths per 1000 births`)
+```
+### medians
+```{r}
+countries_alc_median <- median(country_stats_2019$`liters of pure alcohol`)
+gdp_median <- median(country_stats_2019$`GDP per Capita`)
+infant_mortality_median <- median(country_stats_2019$`deaths per 1000 births`)
+```
+### range
+```{r}
+countries_alc_range <- range(country_stats_2019$`liters of pure alcohol`)
+gdp_range <- range(country_stats_2019$`GDP per Capita`)
+infant_mortality_range <- range(country_stats_2019$`deaths per 1000 births`)
+```
+### IQR
+```{r}
+countries_alc_iqr <- IQR(country_stats_2019$`liters of pure alcohol`)
+gdp_iqr <- IQR(country_stats_2019$`GDP per Capita`)
+infant_mortality_iqr <- IQR(country_stats_2019$`deaths per 1000 births`)
+```
+## Summary Statistics (Lower Class)
+### means
+```{r}
+lower_class_countries_alc_mean <- mean(lower_class_countries$`liters of pure alcohol`)
+lower_class_infant_mortality_mean <- mean(lower_class_countries$`deaths per 1000 births`)
+```
+### medians
+```{r}
+lower_class_countries_alc_median <- median(lower_class_countries$`liters of pure alcohol`)
+lower_class_infant_mortality_median <- median(lower_class_countries$`deaths per 1000 births`)
+```
+### range
+```{r}
+lower_class_countries_alc_range <- range(lower_class_countries$`liters of pure alcohol`)
+
+lower_class_infant_mortality_range <- range(lower_class_countries$`deaths per 1000 births`)
+```
+### IQR
+```{r}
+lower_class_countries_alc_iqr <- IQR(lower_class_countries$`liters of pure alcohol`)
+
+lower_class_infant_mortality_iqr <- IQR(lower_class_countries$`deaths per 1000 births`)
+```
+## Summary Statistics (Lower Middle)
+### means
+```{r}
+lower_mid_countries_alc_mean <- mean(low_mid_countries$`liters of pure alcohol`)
+low_mid_class_infant_mortality_mean <- mean(low_mid_countries$`deaths per 1000 births`)
+```
+### medians
+```{r}
+lower_mid_class_countries_alc_median <- median(low_mid_countries$`liters of pure alcohol`)
+lower_mid_class_infant_mortality_median <- median(low_mid_countries$`deaths per 1000 births`)
+```
+### range
+```{r}
+lower_mid_class_countries_alc_range <- range(low_mid_countries$`liters of pure alcohol`)
+
+lower_mid_class_infant_mortality_range <- range(low_mid_countries$`deaths per 1000 births`)
+```
+### IQR
+```{r}
+lower_mid_class_countries_alc_iqr <- IQR(low_mid_countries$`liters of pure alcohol`)
+
+lower_mid_class_infant_mortality_iqr <- IQR(low_mid_countries$`deaths per 1000 births`)
+```
+## Summary Statistics (Upper Mid)
+### means
+```{r}
+upper_mid_class_countries_alc_mean <- mean(upper_mid_countries$`liters of pure alcohol`)
+upper_mid_infant_mortality_mean <- mean(upper_mid_countries$`deaths per 1000 births`)
+```
+### medians
+```{r}
+upper_mid_countries_alc_median <- median(upper_mid_countries$`liters of pure alcohol`)
+upper_mid_infant_mortality_median <- median(upper_mid_countries$`deaths per 1000 births`)
+```
+### range
+```{r}
+upper_mid_countries_alc_range <- range(upper_mid_countries$`liters of pure alcohol`)
+
+upper_mid_infant_mortality_range <- range(upper_mid_countries$`deaths per 1000 births`)
+```
+### IQR
+```{r}
+upper_mid_countries_alc_iqr <- IQR(upper_mid_countries$`liters of pure alcohol`)
+
+upper_mid_infant_mortality_iqr <- IQR(upper_mid_countries$`deaths per 1000 births`)
+```
+## Summary Statistics (Upper Class)
+### means
+```{r}
+upper_class_countries_alc_mean <- mean(upper_class_countries$`liters of pure alcohol`)
+upper_class_infant_mortality_mean <- mean(upper_class_countries$`deaths per 1000 births`)
+```
+### medians
+```{r}
+upper_class_countries_alc_median <- median(upper_class_countries$`liters of pure alcohol`)
+upper_class_infant_mortality_median <- median(upper_class_countries$`deaths per 1000 births`)
+```
+### range
+```{r}
+upper_class_countries_alc_range <- range(upper_class_countries$`liters of pure alcohol`)
+
+upper_class_infant_mortality_range <- range(upper_class_countries$`deaths per 1000 births`)
+```
+### IQR
+```{r}
+upper_class_countries_alc_iqr <- IQR(upper_class_countries$`liters of pure alcohol`)
+
+upper_class_infant_mortality_iqr <- IQR(upper_class_countries$`deaths per 1000 births`)
+```
+
+# Visualization
+## All Countries
+```{r}
+ggplot(data = country_stats_2019, aes(x = `deaths per 1000 births`, y = `liters of pure alcohol`))+
+  geom_point()
+```
+```{r}
+ggplot(data = country_stats_2019, aes(x = `deaths per 1000 births`, y = `liters of pure alcohol`))+
+  geom_point()+
+  geom_smooth()
+```
+## Lower class countries
+```{r}
+ggplot(data = lower_class_countries, aes(x = `deaths per 1000 births`, y = `liters of pure alcohol`)) +
+  geom_point()
+```
+## Lower Middle Class Countries
+```{r}
+ggplot(data = low_mid_countries, aes(x = `deaths per 1000 births`, y = `liters of pure alcohol`)) +
+  geom_point()
+```
+## Upper Middle Class Countries
+```{r}
+ggplot(data = upper_mid_countries, aes(x = `deaths per 1000 births`, y = `liters of pure alcohol`)) +
+  geom_point()
+```
+## Upper Class Countries
+```{r}
+ggplot(data = upper_class_countries, aes(x = `deaths per 1000 births`, y = `liters of pure alcohol`)) +
+  geom_point()
+```
+
+## What about the United States?
+```{r}
+alc_df %>%
+  filter(country == "United States of America") %>%
+  ggplot( aes(x = year, y = `liters of pure alcohol`)) +
+  geom_point()
+```
+Here we can clearly see that our alcohol consumption has been steadily increasing.
+```{r}
+infant_df %>%
+  filter(country == "United States") %>%
+  ggplot( aes(x = year, y = `deaths per 1000 births`))+
+  geom_point()
+```
+Here we can see that the US has a steady decline for infant deaths over the years.
+
+# Conclusion
+
+## The Result
+To my surprise, alcohol consumption does not seem to play a significant role on infant mortality rates, regardless of how wealth the country is. 
+
+## The Possible Explanations
+1. Maybe there was an invention that significantly raised successful birth rates, regardless of development issues.
+2. People that like to drink are more fertile than those that don't.
